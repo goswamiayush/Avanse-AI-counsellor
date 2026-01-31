@@ -271,6 +271,38 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# --- 3.5 SETTINGS TOGGLE (HACK) ---
+# We inject a button that mimics a settings icon.
+# Since we can't easily trigger the native sidebar from a custom button without custom components,
+# we will just add a clear instruction or rely on the visible arrow.
+# However, user asked for a "small setting button that is always there".
+# We can use st.sidebar.button but that's inside the sidebar.
+# Best approach: Use CSS to Style the Native Sidebar Toggle to look like a Settings Gear.
+
+st.markdown("""
+<style>
+    /* Transform the native sidebar toggle into a Settings Icon */
+    [data-testid="stSidebarCollapsedControl"] {
+        top: 15px !important;
+        left: 15px !important;
+        background-color: transparent !important;
+        color: #007AFF !important;
+        border: none !important;
+    }
+    
+    [data-testid="stSidebarCollapsedControl"]::before {
+        content: "⚙️";
+        font-size: 24px;
+        visibility: visible;
+    }
+    
+    /* Hide the original arrow icon if possible (tricky without specific SVG targeting) */
+    [data-testid="stSidebarCollapsedControl"] svg {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 4. API SETUP (HANDLED BY UTILS NOW) ---
 # Direct client init removed
 # client = genai.Client(api_key=api_key)
