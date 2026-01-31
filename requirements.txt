@@ -3,3 +3,4 @@ google-genai>=1.0.0
 pandas
 gspread
 oauth2client
+openai>=1.0.0
