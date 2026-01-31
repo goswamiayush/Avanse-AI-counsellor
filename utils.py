@@ -23,10 +23,14 @@ class SheetLogger:
         # 1. Try connecting via File (Local)
         if os.path.exists(json_keyfile):
             try:
-                scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                scope = [
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive"
+                ]
                 creds = ServiceAccountCredentials.from_json_keyfile_name(json_keyfile, scope)
                 client = gspread.authorize(creds)
                 self.sheet = client.open_by_key(sheet_id).sheet1
+                print(f"✅ Successfully connected to Sheet: {self.sheet.title}")
                 self.use_sheets = True
             except Exception as e:
                 print(f"File Auth Error: {e}")
@@ -34,7 +38,10 @@ class SheetLogger:
         # 2. Try connection via st.secrets (Cloud)
         if not self.use_sheets and "gcp_service_account" in st.secrets:
             try:
-                scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                scope = [
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive"
+                ]
                 # Create a temporary dict from secrets to pass to the credential builder
                 creds_dict = dict(st.secrets["gcp_service_account"])
                 
@@ -45,6 +52,7 @@ class SheetLogger:
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
                 client = gspread.authorize(creds)
                 self.sheet = client.open_by_key(sheet_id).sheet1
+                print(f"✅ Successfully connected to Sheet: {self.sheet.title}")
                 self.use_sheets = True
             except Exception as e:
                 self.auth_error = str(e)
@@ -85,7 +93,9 @@ class SheetLogger:
         if self.use_sheets:
             try:
                 self.sheet.append_row(row)
-            except:
+                print("✅ Row added to Google Sheet")
+            except Exception as e:
+                print(f"❌ Error writing to Google Sheet: {e}")
                 self.append_to_csv(row)
         else:
             self.append_to_csv(row)
