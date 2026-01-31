@@ -74,7 +74,16 @@ st.markdown("""
     }
     
     /* HIDE DEFAULT STREAMLIT ELEMENTS */
-    #MainMenu, footer, header {visibility: hidden;}
+    #MainMenu, footer {visibility: hidden;}
+    
+    /* Hide Header but force Sidebar Toggle to be visible */
+    header {visibility: hidden;}
+    [data-testid="stSidebarCollapsedControl"] {
+        visibility: visible;
+        display: block;
+        z-index: 10001; /* Ensure it floats above custom header */
+        color: #007AFF;
+    }
     
     /* IOS HEADER */
     .sticky-header {
