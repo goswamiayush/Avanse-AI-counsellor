@@ -269,6 +269,8 @@ def extract_json_and_sources(response):
         "Mobile": data.get("Mobile"),
         "Email": data.get("Email"),
         "Country": data.get("Country"),
+        "Target_Degree": data.get("Target_Degree"),
+        "Intended_Major": data.get("Intended_Major"),
         "College": data.get("College"),
         "Budget": data.get("Budget"),
         "Sentiment": data.get("Sentiment"),
@@ -295,7 +297,7 @@ def get_gemini_response(query, history):
         
         GOAL:
         1. Guide the student on Study Abroad (Uni, Visa, Loans).
-        2. NATURALLY gather: Name, Mobile, Email, Country, College, Budget. Do NOT force it. Ask one by one if missing.
+        2. NATURALLY gather: Name, Mobile, Email, Country, Target Degree (Masters/Bachelors), Intended Major (CS/MBA/etc), College, Budget. Do NOT force it. Ask one by one if missing.
         3. Assess 'Sentiment' (Positive/Neutral/Negative) and 'Propensity' (High/Medium/Low) for conversion.
         4. CRITICAL: If the user mentions multiple items (e.g., "USA and UK", "CS and Data Science"), return them as logical COMMA-SEPARATED strings in the JSON (e.g., "USA, UK").
         
@@ -308,6 +310,8 @@ def get_gemini_response(query, history):
             "Mobile": "Extracted or null",
             "Email": "Extracted or null",
             "Country": "Extracted or null",
+            "Target_Degree": "Extracted or null",
+            "Intended_Major": "Extracted or null",
             "College": "Extracted or null",
             "Budget": "Extracted or null",
             "Sentiment": "Positive/Neutral/Negative",

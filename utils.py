@@ -14,7 +14,8 @@ class SheetLogger:
     def __init__(self, json_keyfile="credentials.json", sheet_id=None):
         self.headers = [
             "Session_ID", "Timestamp", "Name", "Mobile", "Email", "Country", 
-            "College", "Budget", "Sentiment", "Propensity", "Time_Spent", "Full_Conversation_History"
+            "Target_Degree", "Intended_Major", "College", "Budget", "Sentiment", 
+            "Propensity", "Time_Spent", "User_Inputs_Only", "Full_Conversation_History"
         ]
 
         # 0. Get Sheet ID from Secrets if not provided
@@ -98,12 +99,19 @@ class SheetLogger:
             return
         
         try:
-            existing_data = self.sheet.get_all_values()
-            if not existing_data:
+            # Efficient check: just get the first row
+            first_row = self.sheet.row_values(1)
+            
+            if not first_row:
                 self.sheet.append_row(self.headers)
                 print("✅ Headers added to new Sheet.")
-            elif existing_data[0] != self.headers:
-                # Optional: Force update headers if they don't match (be careful not to overwrite data)
+            elif first_row != self.headers:
+                # OPTIONAL: If headers mismatch, we could update them.
+                # Ideally, we should check if it's safe to update.
+                # For now, let's just log it to avoid overwriting data.
+                print(f"⚠️ Header mismatch. Expected: {self.headers} | Found: {first_row}")
+                # FORCE UPDATE HEADERS (Use with caution - user asked to "fix" it)
+                # self.sheet.update("A1:O1", [self.headers])
                 pass 
         except Exception as e:
             print(f"⚠️ Header check failed: {e}")
@@ -114,19 +122,25 @@ class SheetLogger:
         """
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # Ensure values are strings to prevent None issues
+        def clean(val): return str(val) if val else ""
+
         row_data = [
-            data.get("Session_ID", ""),
+            clean(data.get("Session_ID")),
             timestamp,
-            data.get("Name", ""),
-            data.get("Mobile", ""),
-            data.get("Email", ""),
-            data.get("Country", ""),
-            data.get("College", ""),
-            data.get("Budget", ""),
-            data.get("Sentiment", "Neutral"),
-            data.get("Propensity", "Low"),
-            data.get("Time_Spent", "0s"),
-            data.get("Full_Conversation_History", "")
+            clean(data.get("Name")),
+            clean(data.get("Mobile")),
+            clean(data.get("Email")),
+            clean(data.get("Country")),
+            clean(data.get("Target_Degree")),
+            clean(data.get("Intended_Major")),
+            clean(data.get("College")),
+            clean(data.get("Budget")),
+            clean(data.get("Sentiment", "Neutral")),
+            clean(data.get("Propensity", "Low")),
+            clean(data.get("Time_Spent", "0s")),
+            clean(data.get("User_Inputs_Only", "")),
+            clean(data.get("Full_Conversation_History", ""))
         ]
 
         if not self.use_sheets:
@@ -138,18 +152,15 @@ class SheetLogger:
             # This is more efficient than get_all_records() for large sheets
             col1 = self.sheet.col_values(1)
             
-            session_id = data.get("Session_ID")
+            session_id = str(data.get("Session_ID"))
             
             if session_id in col1:
                 # UPDATE EXISTING ROW
-                # gspread is 1-indexed. Index of ID + 1 gives the row number.
+                # gspread is 1-indexed. Key matching row.
                 row_index = col1.index(session_id) + 1
                 
-                # Update specific range to save API quota? OR just update whole row.
-                # Updating whole row is safer for consistency.
-                # Range A{row}:L{row}
-                
-                cell_range = f"A{row_index}:L{row_index}"
+                # Update specific range: A{row}:O{row} (15 columns)
+                cell_range = f"A{row_index}:O{row_index}"
                 self.sheet.update(cell_range, [row_data])
                 print(f"✅ Updated existing row {row_index} for Session: {session_id}")
                 
@@ -183,6 +194,9 @@ class SessionTracker:
             
         if "conversation_log" not in st.session_state:
             st.session_state.conversation_log = []
+            
+        if "user_input_log" not in st.session_state:
+            st.session_state.user_input_log = []
         
         if "user_details" not in st.session_state:
             st.session_state.user_details = {
@@ -190,6 +204,8 @@ class SessionTracker:
                 "Mobile": None,
                 "Email": None,
                 "Country": None,
+                "Target_Degree": None,
+                "Intended_Major": None,
                 "College": None,
                 "Budget": None,
                 "Sentiment": "Neutral",
@@ -229,6 +245,9 @@ class SessionTracker:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         entry = f"[{timestamp}] User: {user_text} | Bot: {bot_text}"
         st.session_state.conversation_log.append(entry)
+        
+        # Log User Input Separately
+        st.session_state.user_input_log.append(f"[{timestamp}] {user_text}")
 
     def get_time_spent(self):
         elapsed = datetime.datetime.now() - st.session_state.start_time
@@ -241,6 +260,9 @@ class SessionTracker:
         
         # Join full conversation history
         data["Full_Conversation_History"] = "\n".join(st.session_state.conversation_log)
+        
+        # Join User Inputs Only
+        data["User_Inputs_Only"] = "\n".join(st.session_state.user_input_log)
         
         return data
 
