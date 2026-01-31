@@ -221,7 +221,7 @@ st.markdown("""
 
 # --- 4. API SETUP ---
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
+    api_key = st.secrets["GOOGLE_API_KEY"]
 except:
     st.error("⚠️ API Key missing.")
     st.stop()
