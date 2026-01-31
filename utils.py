@@ -8,7 +8,15 @@ import json
 
 # --- GOOGLE SHEETS LOGGER ---
 class SheetLogger:
-    def __init__(self, json_keyfile="credentials.json", sheet_id="1xKkadZFL3HI8y544rSJeedN-irwxkVD_Qq8u2N8FwPE"):
+    def __init__(self, json_keyfile="credentials.json", sheet_id=None):
+        # 0. Get Sheet ID from Secrets if not provided
+        if not sheet_id:
+            try:
+                sheet_id = st.secrets["SHEET_ID"]
+            except:
+                # Fallback to the hardcoded ID for safety, or error out
+                sheet_id = "1xKkadZFL3HI8y544rSJeedN-irwxkVD_Qq8u2N8FwPE"
+        
         self.use_sheets = False
         self.sheet = None
         
