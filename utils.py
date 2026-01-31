@@ -1,15 +1,22 @@
 import streamlit as st
 import gspread
+from gspread.exceptions import APIError
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import datetime
 import os
 import json
 import traceback
+import uuid
 
 # --- GOOGLE SHEETS LOGGER ---
 class SheetLogger:
     def __init__(self, json_keyfile="credentials.json", sheet_id=None):
+        self.headers = [
+            "Session_ID", "Timestamp", "Name", "Mobile", "Email", "Country", 
+            "College", "Budget", "Sentiment", "Propensity", "Time_Spent", "Full_Conversation_History"
+        ]
+
         # 0. Get Sheet ID from Secrets if not provided
         if not sheet_id:
             try:
@@ -56,9 +63,20 @@ class SheetLogger:
                 client = gspread.authorize(creds)
                 self.sheet = client.open_by_key(sheet_id).sheet1
                 print(f"✅ Successfully connected to Sheet: {self.sheet.title}")
+                self.ensure_headers()
                 self.use_sheets = True
+            except APIError as api_err:
+                if "disabled" in str(api_err):
+                    self.auth_error = (
+                        "📉 **Google Sheets API is Disabled** on your Google Cloud Project.\n"
+                        "Please enable it here: [Enable Sheets API]"
+                        "(https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=ayush-twin)"
+                    )
+                else:
+                    self.auth_error = f"Google Sheets API Error: {str(api_err)}"
+                print(f"Secrets Auth API Error: {api_err}")
             except Exception as e:
-                self.auth_error = f"Secrets Auth Failed: {str(e)}\nTraceback: {traceback.format_exc()}"
+                self.auth_error = f"Secrets Auth Failed: {str(e)}"
                 print(f"Secrets Auth Error: {e}")
 
         # 3. Fallback to CSV
@@ -70,16 +88,34 @@ class SheetLogger:
         
         self.csv_file = "leads.csv"
         if not os.path.exists(self.csv_file):
-            df = pd.DataFrame(columns=["Timestamp", "Name", "Mobile", "Email", "Country", "College", "Budget", "Sentiment", "Propensity", "Time_Spent", "Interaction_Summary"])
+            # Create CSV with new headers
+            df = pd.DataFrame(columns=self.headers)
             df.to_csv(self.csv_file, index=False)
 
-    def log_lead(self, data):
+    def ensure_headers(self):
+        """Checks if the sheet is empty and adds headers if needed."""
+        if not self.use_sheets or not self.sheet:
+            return
+        
+        try:
+            existing_data = self.sheet.get_all_values()
+            if not existing_data:
+                self.sheet.append_row(self.headers)
+                print("✅ Headers added to new Sheet.")
+            elif existing_data[0] != self.headers:
+                # Optional: Force update headers if they don't match (be careful not to overwrite data)
+                pass 
+        except Exception as e:
+            print(f"⚠️ Header check failed: {e}")
+
+    def upsert_lead(self, data):
         """
-        Logs lead data to Google Sheet or CSV.
-        data: dict containing keys matching the columns
+        Updates existing row if Session_ID exists, else appends.
         """
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        row = [
+        
+        row_data = [
+            data.get("Session_ID", ""),
             timestamp,
             data.get("Name", ""),
             data.get("Mobile", ""),
@@ -90,28 +126,63 @@ class SheetLogger:
             data.get("Sentiment", "Neutral"),
             data.get("Propensity", "Low"),
             data.get("Time_Spent", "0s"),
-            data.get("Interaction_Summary", "")
+            data.get("Full_Conversation_History", "")
         ]
 
-        if self.use_sheets:
-            try:
-                self.sheet.append_row(row)
-                print("✅ Row added to Google Sheet")
-            except Exception as e:
-                print(f"❌ Error writing to Google Sheet: {e}")
-                self.append_to_csv(row)
-        else:
-            self.append_to_csv(row)
+        if not self.use_sheets:
+            self.append_to_csv(row_data)
+            return
+
+        try:
+            # 1. Get all Session IDs (Column 1)
+            # This is more efficient than get_all_records() for large sheets
+            col1 = self.sheet.col_values(1)
+            
+            session_id = data.get("Session_ID")
+            
+            if session_id in col1:
+                # UPDATE EXISTING ROW
+                # gspread is 1-indexed. Index of ID + 1 gives the row number.
+                row_index = col1.index(session_id) + 1
+                
+                # Update specific range to save API quota? OR just update whole row.
+                # Updating whole row is safer for consistency.
+                # Range A{row}:L{row}
+                
+                cell_range = f"A{row_index}:L{row_index}"
+                self.sheet.update(cell_range, [row_data])
+                print(f"✅ Updated existing row {row_index} for Session: {session_id}")
+                
+            else:
+                # APPEND NEW ROW
+                self.sheet.append_row(row_data)
+                print(f"✅ Appended new row for Session: {session_id}")
+
+        except Exception as e:
+            print(f"❌ Upsert Error: {e}")
+            self.append_to_csv(row_data)
 
     def append_to_csv(self, row):
-        df = pd.DataFrame([row], columns=["Timestamp", "Name", "Mobile", "Email", "Country", "College", "Budget", "Sentiment", "Propensity", "Time_Spent", "Interaction_Summary"])
-        df.to_csv(self.csv_file, mode='a', header=False, index=False)
+        # Check if file exists to write headers
+        file_exists = os.path.exists(self.csv_file)
+        
+        # We need to map list row back to dict or dataframe for CSV appending with headers
+        # Simpler: just append list to file
+        df = pd.DataFrame([row], columns=self.headers)
+        
+        df.to_csv(self.csv_file, mode='a', header=not file_exists, index=False)
 
 # --- SESSION TRACKER ---
 class SessionTracker:
     def __init__(self):
         if "start_time" not in st.session_state:
             st.session_state.start_time = datetime.datetime.now()
+            
+        if "session_id" not in st.session_state:
+            st.session_state.session_id = str(uuid.uuid4())
+            
+        if "conversation_log" not in st.session_state:
+            st.session_state.conversation_log = []
         
         if "user_details" not in st.session_state:
             st.session_state.user_details = {
@@ -152,16 +223,25 @@ class SessionTracker:
                 else:
                     st.session_state.user_details[key] = new_val
     
+    
+    def add_interaction(self, user_text, bot_text):
+        """Append interaction to conversation log."""
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] User: {user_text} | Bot: {bot_text}"
+        st.session_state.conversation_log.append(entry)
+
     def get_time_spent(self):
         elapsed = datetime.datetime.now() - st.session_state.start_time
         return str(elapsed).split('.')[0] # HH:MM:SS
 
     def get_lead_data(self):
         data = st.session_state.user_details.copy()
+        data["Session_ID"] = st.session_state.session_id
         data["Time_Spent"] = self.get_time_spent()
-        # Create a mini summary of the chat so far
-        # (Naive approach: just last 3 interactions)
-        # In a real app, we might ask LLM to summarize
+        
+        # Join full conversation history
+        data["Full_Conversation_History"] = "\n".join(st.session_state.conversation_log)
+        
         return data
 
 # Initialize global logger

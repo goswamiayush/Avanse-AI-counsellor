@@ -402,14 +402,16 @@ if st.session_state.messages[-1]["role"] == "user":
         loader_placeholder.empty()
         
         # Process Lead Data & Log
+        # Process Lead Data & Log
         tracker.update_from_llm(lead_data)
-        current_summary = f"User said: {st.session_state.messages[-1]['content']} | Bot: {answer[:50]}..."
+        
+        # Add interaction to conversation log
+        tracker.add_interaction(st.session_state.messages[-1]['content'], answer)
         
         full_lead_data = tracker.get_lead_data()
-        full_lead_data["Interaction_Summary"] = current_summary
         
-        # LOG TO SHEET/CSV
-        logger.log_lead(full_lead_data)
+        # LOG TO SHEET/CSV (Upsert)
+        logger.upsert_lead(full_lead_data)
         
         # Render Answer
         st.markdown(answer)
