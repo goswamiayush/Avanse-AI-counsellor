@@ -47,7 +47,8 @@ class SheetLogger:
                 
                 # Fix for potential private_key formatting issues (replace literal \n with actual newline)
                 if "private_key" in creds_dict:
-                    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                    raw_key = creds_dict["private_key"]
+                    creds_dict["private_key"] = raw_key.replace("\\n", "\n").replace('\\n', '\n')
 
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
                 client = gspread.authorize(creds)
@@ -62,8 +63,8 @@ class SheetLogger:
         if not self.use_sheets:
              # Only show error if we expected to find sheets (i.e. not just a fresh local run without config)
              if os.path.exists(json_keyfile) or "gcp_service_account" in st.secrets:
-                 err_msg = getattr(self, 'auth_error', 'Check console logs')
-                 st.error(f"Google Sheet Connection Failed. Logging to CSV. Error: {err_msg}")
+                 err_msg = getattr(self, 'auth_error', 'Unknown Error')
+                 st.error(f"⚠️ Google Sheet Connection Failed.\n\n**Error Details:** `{err_msg}`\n\nlogging locally to CSV.")
         
         self.csv_file = "leads.csv"
         if not os.path.exists(self.csv_file):
