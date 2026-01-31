@@ -18,49 +18,6 @@ st.set_page_config(
 # Initialize Session Tracker
 tracker = SessionTracker()
 
-# --- INITIALIZE MANAGERS ---
-from utils import KeyManager, LLMClient
-key_manager = KeyManager()
-llm_client = LLMClient(key_manager)
-
-# --- SIDEBAR SETTINGS ---
-with st.sidebar:
-    st.title("⚙️ Settings")
-    
-    # Provider Selection
-    provider = st.selectbox("AI Provider", ["Google", "Groq", "Cerebras"], key="provider_select")
-    provider_key = provider.lower()
-    
-    # Model Selection
-    models = {
-        "Google": ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro"],
-        "Groq": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
-        "Cerebras": ["llama3.1-8b", "llama3.1-70b"]
-    }
-    selected_model = st.selectbox("Model", models.get(provider, []), key="model_select")
-    
-    # API Key Input
-    st.markdown(f"### {provider} API Keys")
-    st.caption("Enter multiple keys (one per line) for auto-rotation.")
-    
-    # Key input keys must match what utils.KeyManager expects
-    key_input_map = {
-        "Google": "input_google_keys",
-        "Groq": "input_groq_keys",
-        "Cerebras": "input_cerebras_keys"
-    }
-    
-    st.text_area(
-        "Paste Keys Here", 
-        height=100, 
-        key=key_input_map[provider], 
-        help="Paste your API keys here. The app will automatically switch if one limit is hit."
-    )
-    
-    # Connection Test
-    if st.button("Test Connectivity"):
-        st.info("Configuration Saved! (Integrity check planned)")
-
 # --- 2. IOS-STYLE MODERN CSS ---
 st.markdown("""
 <style>
@@ -74,29 +31,204 @@ st.markdown("""
     }
     
     /* HIDE DEFAULT STREAMLIT ELEMENTS */
-    /* Remove header hiding to fix missing sidebar arrow */
-    #MainMenu, footer {visibility: hidden;}
+    #MainMenu, footer, header {visibility: hidden;}
     
-    /* Hide Header but force Sidebar Toggle to be visible */
-    header {visibility: hidden;}
-    [data-testid="stSidebarCollapsedControl"] {
-        visibility: visible;
-        display: block;
-        z-index: 10001; /* Ensure it floats above custom header */
+    /* IOS HEADER */
+    .sticky-header {
+        position: fixed; top: 0; left: 0; width: 100%;
+        background: rgba(249, 249, 249, 0.85); /* iOS System Gray 6 with opacity */
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        padding: 0.8rem 0;
+        z-index: 999;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .header-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.2;
+    }
+    .header-title {
+        color: #000;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .header-subtitle {
+        color: #8E8E93; /* iOS Gray Label */
+        font-size: 0.75rem;
+        font-weight: 400;
+    }
+    .header-logo-img {
+        height: 24px;
+        margin-right: 8px;
+    }
+
+    .block-container { padding-top: 6rem !important; padding-bottom: 10rem !important; }
+
+    /* CHAT MESSAGE BUBBLES - IOS STYLE */
+    .stChatMessage { background-color: transparent !important; border: none !important; padding: 0.5rem 0rem !important; }
+    
+    /* ASSISTANT BUBBLE (Gray, Left) */
+    div[data-testid="chatAvatarIcon-assistant"] { display: none; } /* Hide Avatar */
+    div[data-testid="chatAvatarIcon-assistant"] + div {
+        background-color: #E9E9EB; /* iOS Gray Message */
+        color: #000000;
+        border-radius: 18px 18px 18px 4px;
+        padding: 10px 16px;
+        max-width: 80%;
+        float: left;
+        margin-right: auto;
+        box-shadow: none;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        position: relative;
+    }
+    /* Tail for Assistant */
+    div[data-testid="chatAvatarIcon-assistant"] + div::before {
+        content: "";
+        position: absolute;
+        bottom: 0px;
+        left: -8px;
+        width: 20px;
+        height: 20px;
+        background-color: #E9E9EB;
+        border-bottom-right-radius: 16px;
+        z-index: -1;
+    }
+    div[data-testid="chatAvatarIcon-assistant"] + div::after {
+        content: "";
+        position: absolute;
+        bottom: 0px;
+        left: -10px;
+        width: 10px;
+        height: 20px;
+        background-color: #ffffff; /* Match BG */
+        border-bottom-right-radius: 10px;
+        z-index: -1;
+    }
+
+    /* USER BUBBLE (Blue, Right) */
+    div[data-testid="chatAvatarIcon-user"] { display: none; } /* Hide Avatar */
+    div[data-testid="chatAvatarIcon-user"] + div {
+        background: linear-gradient(135deg, #007AFF 0%, #0056b3 100%); /* iOS Blue */
+        color: #FFFFFF !important;
+        border-radius: 18px 18px 4px 18px;
+        padding: 10px 16px;
+        max-width: 80%;
+        float: right;
+        margin-left: auto;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        font-size: 0.95rem;
+    }
+    div[data-testid="chatAvatarIcon-user"] + div p { color: #FFFFFF !important; }
+
+    /* SOURCE CHIPS */
+    .source-container { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .source-chip {
+        display: inline-flex; align-items: center;
+        background-color: #ffffff;
+        border: 1px solid #d1d1d6;
+        border-radius: 12px;
+        padding: 4px 10px;
+        font-size: 0.7rem;
         color: #007AFF;
-        top: 15px !important;
-        left: 15px !important;
-        background-color: transparent !important;
-        border: none !important;
+        text-decoration: none;
+        transition: all 0.2s;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
-    [data-testid="stSidebarCollapsedControl"]::before {
-        content: "⚙️";
-        font-size: 24px;
-        visibility: visible;
+    .source-chip:hover {
+        background-color: #f2f2f7;
     }
-    [data-testid="stSidebarCollapsedControl"] svg {
-        display: none !important;
+
+    /* SUGGESTION BUTTONS */
+    .suggestion-label { 
+        font-size: 0.75rem; 
+        color: #8E8E93; 
+        font-weight: 500; 
+        text-transform: uppercase; 
+        letter-spacing: 0.5px;
+        margin: 20px 0 10px 0; 
+        text-align: center;
     }
+    .stButton button {
+        width: 100%;
+        border-radius: 20px;
+        border: 1px solid #E5E7EB;
+        background-color: #fff;
+        color: #007AFF;
+        padding: 0.6rem;
+        text-align: center;
+        font-size: 0.9rem;
+        font-weight: 400;
+        transition: all 0.2s ease;
+    }
+    .stButton button:hover {
+        background-color: #f2f2f7;
+    }
+
+    /* LOADING ANIMATION */
+    .loader-container {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 10px;
+        background: #E9E9EB;
+        border-radius: 18px;
+        width: fit-content;
+        margin-bottom: 10px;
+        animation: pulse 1.5s infinite ease-in-out;
+    }
+    @keyframes pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+    }
+    .loader-dots {
+        display: flex;
+        gap: 4px;
+    }
+    .dot {
+        width: 8px;
+        height: 8px;
+        background-color: #8E8E93;
+        border-radius: 50%;
+    }
+    .loader-text {
+        margin-left: 10px; 
+        font-size: 0.85rem; 
+        color: #636366;
+        font-style: italic;
+    }
+
+</style>
+""", unsafe_allow_html=True)
+
+# --- 3. HEADER ---
+st.markdown("""
+<div class="sticky-header">
+    <div class="header-content">
+        <div class="header-title">Avanse AI Counselor</div>
+        <div class="header-subtitle">Your Study Abroad Expert</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# --- 4. API SETUP ---
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    st.error("⚠️ API Key missing.")
+    st.stop()
+
+client = genai.Client(api_key=api_key)
+
+# --- 5. STATE MANAGEMENT ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hello! 👋 I'm your Avanse Education Expert.\n\nI can help you with Universities, Visas, and Loans. To get started, may I know your **Name** and **Target Country**?"}
@@ -173,6 +305,7 @@ def format_history(messages):
 def get_gemini_response(query, history):
     try:
         # UPDATED SYSTEM PROMPT FOR DATA CAPTURE
+        history_text = format_history(st.session_state.messages)
         system_prompt = f"""
         You are an expert AI Education Counselor for Avanse Financial Services.
         Current Date: {time.strftime("%B %Y")}
@@ -201,11 +334,11 @@ def get_gemini_response(query, history):
         }}
         
         CONTEXT:
-        {history}
+        {history_text}
         """
 
         response = client.models.generate_content(
-            model='gemini-1.5-flash-001', 
+            model='gemini-2.5-flash', 
             contents=query,
             config=types.GenerateContentConfig(
                 temperature=0.3, 
@@ -285,47 +418,7 @@ if st.session_state.messages[-1]["role"] == "user":
         
         # API Call
         history_text = format_history(st.session_state.messages)
-        
-        system_prompt = f"""
-        You are an expert AI Education Counselor for Avanse Financial Services.
-        Current Date: {time.strftime("%B %Y")}
-        
-        GOAL:
-        1. Guide the student on Study Abroad (Uni, Visa, Loans).
-        2. NATURALLY gather: Name, Mobile, Email, Country, Target Degree (Masters/Bachelors), Intended Major (CS/MBA/etc), College, Budget. Do NOT force it. Ask one by one if missing.
-        3. Assess 'Sentiment' (Positive/Neutral/Negative) and 'Propensity' (High/Medium/Low) for conversion.
-        4. CRITICAL: If the user mentions multiple items (e.g., "USA and UK", "CS and Data Science"), return them as logical COMMA-SEPARATED strings in the JSON (e.g., "USA, UK").
-        
-        OUTPUT FORMAT: Strict JSON ONLY.
-        {{
-            "answer": "Markdown response. Use emojis. Professional but friendly.",
-            "user_options": ["Short Reply 1", "Short Reply 2"],
-            "videos": ["youtube_link_1"],
-            "Name": "Extracted or null",
-            "Mobile": "Extracted or null",
-            "Email": "Extracted or null",
-            "Country": "Extracted or null",
-            "Target_Degree": "Extracted or null",
-            "Intended_Major": "Extracted or null",
-            "College": "Extracted or null",
-            "Budget": "Extracted or null",
-            "Sentiment": "Positive/Neutral/Negative",
-            "Propensity": "High/Medium/Low"
-        }}
-        
-        CONTEXT:
-        {history_text}
-        """
-
-        
-        # Call LLM Client (Multi-Provider)
-        answer, user_opts, sources, videos, lead_data = llm_client.get_response(
-            provider=provider_key, 
-            model_name=selected_model,
-            system_prompt=system_prompt,
-            user_query=st.session_state.messages[-1]["content"],
-            history_text=history_text
-        )
+        answer, user_opts, sources, videos, lead_data = get_gemini_response(st.session_state.messages[-1]["content"], history_text)
         
         # Remove Loader
         loader_placeholder.empty()
