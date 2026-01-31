@@ -5,6 +5,7 @@ import pandas as pd
 import datetime
 import os
 import json
+import traceback
 
 # --- GOOGLE SHEETS LOGGER ---
 class SheetLogger:
@@ -33,6 +34,7 @@ class SheetLogger:
                 print(f"✅ Successfully connected to Sheet: {self.sheet.title}")
                 self.use_sheets = True
             except Exception as e:
+                self.auth_error = f"File Auth Failed: {str(e)}\nTraceback: {traceback.format_exc()}"
                 print(f"File Auth Error: {e}")
 
         # 2. Try connection via st.secrets (Cloud)
@@ -56,7 +58,7 @@ class SheetLogger:
                 print(f"✅ Successfully connected to Sheet: {self.sheet.title}")
                 self.use_sheets = True
             except Exception as e:
-                self.auth_error = str(e)
+                self.auth_error = f"Secrets Auth Failed: {str(e)}\nTraceback: {traceback.format_exc()}"
                 print(f"Secrets Auth Error: {e}")
 
         # 3. Fallback to CSV
