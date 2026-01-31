@@ -99,20 +99,20 @@ class SheetLogger:
             return
         
         try:
-            # Efficient check: just get the first row
-            first_row = self.sheet.row_values(1)
+            # Efficient check: just get the header values
+            # We fetch strictly A1:O1 to avoid getting full sheet
+            header_range = self.sheet.get("A1:O1")
             
-            if not first_row:
-                self.sheet.append_row(self.headers)
+            # header_range is a list of lists: [['Session_ID', ...]]
+            current_headers = header_range[0] if header_range and len(header_range) > 0 else []
+
+            if not current_headers:
+                self.sheet.update("A1:O1", [self.headers])
                 print("✅ Headers added to new Sheet.")
-            elif first_row != self.headers:
-                # OPTIONAL: If headers mismatch, we could update them.
-                # Ideally, we should check if it's safe to update.
-                # For now, let's just log it to avoid overwriting data.
-                print(f"⚠️ Header mismatch. Expected: {self.headers} | Found: {first_row}")
-                # FORCE UPDATE HEADERS (Use with caution - user asked to "fix" it)
-                # self.sheet.update("A1:O1", [self.headers])
-                pass 
+            elif current_headers != self.headers:
+                print(f"⚠️ Header mismatch. Updating to ensure consistency.")
+                self.sheet.update("A1:O1", [self.headers])
+                
         except Exception as e:
             print(f"⚠️ Header check failed: {e}")
 
@@ -165,9 +165,13 @@ class SheetLogger:
                 print(f"✅ Updated existing row {row_index} for Session: {session_id}")
                 
             else:
-                # APPEND NEW ROW
-                self.sheet.append_row(row_data)
-                print(f"✅ Appended new row for Session: {session_id}")
+                # APPEND NEW ROW (Manual Index calculation to fix 8-blank-cell bug)
+                # append_row sometimes appends to the right if data exists in other columns
+                
+                next_row = len(col1) + 1
+                cell_range = f"A{next_row}:O{next_row}"
+                self.sheet.update(cell_range, [row_data])
+                print(f"✅ Inserted new row at {next_row} for Session: {session_id}")
 
         except Exception as e:
             print(f"❌ Upsert Error: {e}")

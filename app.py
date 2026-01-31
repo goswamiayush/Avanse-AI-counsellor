@@ -237,6 +237,20 @@ if "messages" not in st.session_state:
 if "suggestions" not in st.session_state:
     st.session_state.suggestions = ["USA", "UK", "Germany", "Canada"]
 
+# --- FACTS FOR ENGAGEMENT HOOK ---
+FACTS = [
+    "Did you know? 🌍 Over 1 million international students choose the USA for their studies every year!",
+    "Fun Fact: 🎓 STEM degree holders in the USA can get up to 3 years of work authorization (OPT).",
+    "Insight: 💡 Germany offers tuition-free education at many public universities for international students.",
+    "Did you know? 🇬🇧 The UK offers a 2-Year Graduate Route Visa for post-study work opportunities.",
+    "Fact: 🇨🇦 Canada's PGWP allows you to work for up to 3 years after graduation!",
+    "Tip: 📝 Building a strong profile with projects and research papers boosts your admission chances significantly.",
+    "Did you know? 💰 Scholarships in the US are merit-based and can cover up to 100% of tuition!",
+    "Insight: 🌏 Australia offers excellent post-study work rights, especially in regional areas.",
+    "Fact: 🏥 The US healthcare sector is projected to grow much faster than the average for all occupations.",
+    "Did you know? 💻 Computer Science graduates consistently have some of the highest starting salaries globally."
+]
+
 # --- 6. LOGIC FUNCTIONS ---
 def extract_json_and_sources(response):
     text = response.text if response.text else ""
@@ -388,13 +402,16 @@ if user_input:
 if st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         # Custom IOS Loader
+        import random
+        loading_text = random.choice(FACTS)
+        
         loader_placeholder = st.empty()
         loader_placeholder.markdown(f"""
         <div class="loader-container">
             <div class="loader-dots">
                 <div class="dot"></div><div class="dot"></div><div class="dot"></div>
             </div>
-            <div class="loader-text">Avanse Bot is typing...</div>
+            <div class="loader-text" style="font-weight: 500; color: #007AFF;">{loading_text}</div>
         </div>
         """, unsafe_allow_html=True)
         
