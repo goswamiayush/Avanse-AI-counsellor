@@ -12,7 +12,7 @@ st.set_page_config(
     page_title="Avanse AI Counselor",
     page_icon="🎓",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Initialize Session Tracker
@@ -33,7 +33,7 @@ with st.sidebar:
     
     # Model Selection
     models = {
-        "Google": ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"],
+        "Google": ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro"],
         "Groq": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
         "Cerebras": ["llama3.1-8b", "llama3.1-70b"]
     }
