@@ -270,5 +270,199 @@ class SessionTracker:
         
         return data
 
+# --- API KEY MANAGER ---
+class KeyManager:
+    def __init__(self):
+        # Keys storage: { "google": [], "groq": [], "cerebras": [] }
+        self.keys = {
+            "google": [],
+            "groq": [],
+            "cerebras": []
+        }
+        
+        # Current indices
+        if "key_indices" not in st.session_state:
+            st.session_state.key_indices = {"google": 0, "groq": 0, "cerebras": 0}
+
+        # 1. Load from Secrets
+        self._load_from_secrets("GOOGLE_API_KEY", "google")
+        self._load_from_secrets("GROQ_API_KEY", "groq")
+        self._load_from_secrets("CEREBRAS_API_KEY", "cerebras")
+
+        # 2. Load from Sidebar Input (Session State)
+        self._load_from_input("input_google_keys", "google")
+        self._load_from_input("input_groq_keys", "groq")
+        self._load_from_input("input_cerebras_keys", "cerebras")
+
+    def _load_from_secrets(self, secret_name, provider):
+        if secret_name in st.secrets:
+            # Handle comma-separated keys in secrets for power users
+            secrets_val = st.secrets[secret_name]
+            if "," in secrets_val:
+                for k in secrets_val.split(','):
+                    self._add_key(provider, k.strip())
+            else:
+                self._add_key(provider, secrets_val)
+
+    def _load_from_input(self, input_key, provider):
+        if input_key in st.session_state and st.session_state[input_key]:
+            raw_text = st.session_state[input_key]
+            for k in raw_text.split('\n'):
+                self._add_key(provider, k.strip())
+
+    def _add_key(self, provider, key):
+        if key and key not in self.keys[provider]:
+            self.keys[provider].append(key)
+
+    def get_current_key(self, provider):
+        if not self.keys.get(provider): return None
+        idx = st.session_state.key_indices.get(provider, 0) % len(self.keys[provider])
+        return self.keys[provider][idx]
+
+    def rotate_key(self, provider):
+        if not self.keys.get(provider): return None
+        current = st.session_state.key_indices.get(provider, 0)
+        st.session_state.key_indices[provider] = (current + 1) % len(self.keys[provider])
+        print(f"🔄 Rotated {provider} key to index: {st.session_state.key_indices[provider]}")
+        return self.get_current_key(provider)
+
+# --- LLM CLIENT FACADE ---
+import openai
+from google import genai
+from google.genai import types
+
+class LLMClient:
+    def __init__(self, key_manager):
+        self.km = key_manager
+
+    def get_response(self, provider, model_name, system_prompt, user_query, history_text):
+        """
+        Generic fetcher that handles provider switching and retries.
+        """
+        max_retries = 2
+        
+        for attempt in range(max_retries):
+            key = self.km.get_current_key(provider)
+            if not key:
+                return "⚠️ No API Key found for this provider. Please add one in Settings.", {}, [], [], {}
+
+            try:
+                if provider == "google":
+                    return self._fetch_google(key, model_name, system_prompt, user_query, history_text)
+                elif provider in ["groq", "cerebras"]:
+                    return self._fetch_openai_compatible(provider, key, model_name, system_prompt, user_query, history_text)
+                else:
+                    return f"❌ Unknown provider: {provider}", {}, [], [], {}
+
+            except Exception as e:
+                error_str = str(e)
+                # 429 Detection
+                if "429" in error_str or "quota" in error_str.lower() or "resource_exhausted" in error_str.lower():
+                    print(f"⚠️ 429 Hit on {provider}. Rotating key...")
+                    self.km.rotate_key(provider)
+                    continue # Retry with new key
+                else:
+                    return f"❌ Error: {error_str}", {}, [], [], {}
+        
+        return "⚠️ Quota Exhausted on all keys. Please try another provider.", {}, [], [], {}
+
+    def _fetch_google(self, key, model, system, query, history):
+        # Native Google GenAI Call
+        client = genai.Client(api_key=key)
+        
+        # Combine history + query for context (Google style)
+        full_content = f"{system}\n\nCONTEXT:\n{history}\n\nUSER: {query}"
+        
+        response = client.models.generate_content(
+            model=model,
+            contents=full_content,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                # system_instruction=system # Flash 1.5 prefers context in prompt usually
+            )
+        )
+        return self._extract_json_google(response)
+
+    def _fetch_openai_compatible(self, provider, key, model, system, query, history):
+        # Base URLs
+        base_urls = {
+            "groq": "https://api.groq.com/openai/v1",
+            "cerebras": "https://api.cerebras.ai/v1"
+        }
+        
+        client = openai.OpenAI(
+            api_key=key,
+            base_url=base_urls.get(provider)
+        )
+        
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"CONTEXT:\n{history}\n\nUSER QUERY: {query}"}
+        ]
+        
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            response_format={"type": "json_object"} # Force JSON if supported
+        )
+        
+        content = response.choices[0].message.content
+        return self._extract_json_generic(content)
+
+    def _extract_json_google(self, response):
+        text = response.text if response.text else ""
+        # Reuse existing logic or import from app.py refactor
+        # For valid refactoring, we should move the extraction logic to utils or keep it in app
+        # For now, let's return RAW text and let app.py parse it to minimize breakage
+        # WAIT: app.py expects (answer, user_opts, sources, videos, lead_data)
+        # We need to standardize this.
+        
+        # ... Re-implementing extraction logic here to be self-contained ...
+        return self._parse_json_result(text)
+
+    def _extract_json_generic(self, text):
+        return self._parse_json_result(text)
+
+    def _parse_json_result(self, text):
+        import json
+        import re
+        
+        # JSON Parsing
+        try:
+            # Try finding JSON block
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+                data = json.loads(json_str)
+            else:
+                data = json.loads(text)
+        except:
+            data = {}
+
+        # Extract Fields
+        answer = data.get("answer", text) # Fallback to full text if no JSON
+        user_options = data.get("user_options", [])
+        videos = data.get("videos", [])
+        
+        # Lead Info
+        lead_info = {
+            "Name": data.get("Name"),
+            "Mobile": data.get("Mobile"),
+            "Email": data.get("Email"),
+            "Country": data.get("Country"),
+            "Target_Degree": data.get("Target_Degree"),
+            "Intended_Major": data.get("Intended_Major"),
+            "College": data.get("College"),
+            "Budget": data.get("Budget"),
+            "Sentiment": data.get("Sentiment"),
+            "Propensity": data.get("Propensity")
+        }
+        
+        # Sources (Mock for now or extract if provider supports it)
+        sources = [] 
+        
+        return answer, user_options, sources, videos, lead_info
+
 # Initialize global logger
 logger = SheetLogger()

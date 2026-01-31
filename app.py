@@ -18,6 +18,49 @@ st.set_page_config(
 # Initialize Session Tracker
 tracker = SessionTracker()
 
+# --- INITIALIZE MANAGERS ---
+from utils import KeyManager, LLMClient
+key_manager = KeyManager()
+llm_client = LLMClient(key_manager)
+
+# --- SIDEBAR SETTINGS ---
+with st.sidebar:
+    st.title("⚙️ Settings")
+    
+    # Provider Selection
+    provider = st.selectbox("AI Provider", ["Google", "Groq", "Cerebras"], key="provider_select")
+    provider_key = provider.lower()
+    
+    # Model Selection
+    models = {
+        "Google": ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"],
+        "Groq": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
+        "Cerebras": ["llama3.1-8b", "llama3.1-70b"]
+    }
+    selected_model = st.selectbox("Model", models.get(provider, []), key="model_select")
+    
+    # API Key Input
+    st.markdown(f"### {provider} API Keys")
+    st.caption("Enter multiple keys (one per line) for auto-rotation.")
+    
+    # Key input keys must match what utils.KeyManager expects
+    key_input_map = {
+        "Google": "input_google_keys",
+        "Groq": "input_groq_keys",
+        "Cerebras": "input_cerebras_keys"
+    }
+    
+    st.text_area(
+        "Paste Keys Here", 
+        height=100, 
+        key=key_input_map[provider], 
+        help="Paste your API keys here. The app will automatically switch if one limit is hit."
+    )
+    
+    # Connection Test
+    if st.button("Test Connectivity"):
+        st.info("Configuration Saved! (Integrity check planned)")
+
 # --- 2. IOS-STYLE MODERN CSS ---
 st.markdown("""
 <style>
@@ -219,14 +262,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 4. API SETUP ---
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-except:
-    st.error("⚠️ API Key missing.")
-    st.stop()
-
-client = genai.Client(api_key=api_key)
+# --- 4. API SETUP (HANDLED BY UTILS NOW) ---
+# Direct client init removed
+# client = genai.Client(api_key=api_key)
 
 # --- 5. STATE MANAGEMENT ---
 if "messages" not in st.session_state:
@@ -299,56 +337,10 @@ def extract_json_and_sources(response):
 
     return answer, user_options, sources, videos, lead_info
 
+# Logic replaced by LLMClient
+# format_history helper is still used
 def format_history(messages):
     return "\n".join([f"{m['role']}: {m['content']}" for m in messages[-10:]]) # Increased context window
-
-def get_gemini_response(query, history):
-    try:
-        # UPDATED SYSTEM PROMPT FOR DATA CAPTURE
-        system_prompt = f"""
-        You are an expert AI Education Counselor for Avanse Financial Services.
-        Current Date: {time.strftime("%B %Y")}
-        
-        GOAL:
-        1. Guide the student on Study Abroad (Uni, Visa, Loans).
-        2. NATURALLY gather: Name, Mobile, Email, Country, Target Degree (Masters/Bachelors), Intended Major (CS/MBA/etc), College, Budget. Do NOT force it. Ask one by one if missing.
-        3. Assess 'Sentiment' (Positive/Neutral/Negative) and 'Propensity' (High/Medium/Low) for conversion.
-        4. CRITICAL: If the user mentions multiple items (e.g., "USA and UK", "CS and Data Science"), return them as logical COMMA-SEPARATED strings in the JSON (e.g., "USA, UK").
-        
-        OUTPUT FORMAT: Strict JSON ONLY.
-        {{
-            "answer": "Markdown response. Use emojis. Professional but friendly.",
-            "user_options": ["Short Reply 1", "Short Reply 2"],
-            "videos": ["youtube_link_1"],
-            "Name": "Extracted or null",
-            "Mobile": "Extracted or null",
-            "Email": "Extracted or null",
-            "Country": "Extracted or null",
-            "Target_Degree": "Extracted or null",
-            "Intended_Major": "Extracted or null",
-            "College": "Extracted or null",
-            "Budget": "Extracted or null",
-            "Sentiment": "Positive/Neutral/Negative",
-            "Propensity": "High/Medium/Low"
-        }}
-        
-        CONTEXT:
-        {history}
-        """
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', 
-            contents=query,
-            config=types.GenerateContentConfig(
-                temperature=0.3, 
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                system_instruction=system_prompt
-            )
-        )
-        return extract_json_and_sources(response)
-
-    except Exception as e:
-        return f"⚠️ Connection Issue: {str(e)}", [], [], [], {}
 
 # --- 7. UI COMPONENT RENDERING ---
 def render_message(role, content, sources=None, videos=None):
@@ -417,7 +409,46 @@ if st.session_state.messages[-1]["role"] == "user":
         
         # API Call
         history_text = format_history(st.session_state.messages)
-        answer, user_opts, sources, videos, lead_data = get_gemini_response(st.session_state.messages[-1]["content"], history_text)
+        
+        system_prompt = f"""
+        You are an expert AI Education Counselor for Avanse Financial Services.
+        Current Date: {time.strftime("%B %Y")}
+        
+        GOAL:
+        1. Guide the student on Study Abroad (Uni, Visa, Loans).
+        2. NATURALLY gather: Name, Mobile, Email, Country, Target Degree (Masters/Bachelors), Intended Major (CS/MBA/etc), College, Budget. Do NOT force it. Ask one by one if missing.
+        3. Assess 'Sentiment' (Positive/Neutral/Negative) and 'Propensity' (High/Medium/Low) for conversion.
+        4. CRITICAL: If the user mentions multiple items (e.g., "USA and UK", "CS and Data Science"), return them as logical COMMA-SEPARATED strings in the JSON (e.g., "USA, UK").
+        
+        OUTPUT FORMAT: Strict JSON ONLY.
+        {{
+            "answer": "Markdown response. Use emojis. Professional but friendly.",
+            "user_options": ["Short Reply 1", "Short Reply 2"],
+            "videos": ["youtube_link_1"],
+            "Name": "Extracted or null",
+            "Mobile": "Extracted or null",
+            "Email": "Extracted or null",
+            "Country": "Extracted or null",
+            "Target_Degree": "Extracted or null",
+            "Intended_Major": "Extracted or null",
+            "College": "Extracted or null",
+            "Budget": "Extracted or null",
+            "Sentiment": "Positive/Neutral/Negative",
+            "Propensity": "High/Medium/Low"
+        }}
+        
+        CONTEXT:
+        {history_text}
+        """
+
+        # CALL LLM CLIENT
+        answer, user_opts, sources, videos, lead_data = llm_client.get_response(
+            provider=provider_key, 
+            model_name=selected_model,
+            system_prompt=system_prompt,
+            user_query=st.session_state.messages[-1]["content"],
+            history_text=history_text
+        )
         
         # Remove Loader
         loader_placeholder.empty()
